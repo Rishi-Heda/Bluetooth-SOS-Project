@@ -33,7 +33,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         getApplication<Application>().stopService(intent)
     }
 
-    fun broadcastMySos() {
+    // UPDATED: Now accepts dynamic type and severity from the UI dropdowns
+    fun broadcastMySos(emergencyType: Byte, severity: Byte) {
         viewModelScope.launch {
             // Fetch real GPS, fallback to 0.0 if the location request fails
             val coordinates = locationHelper.getCurrentLocation()
@@ -44,13 +45,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 messageId = SosPacket.generateId(),
                 latitude = lat,
                 longitude = lon,
-                severity = 1,         // 1 = Medical Emergency
+                emergencyType = emergencyType,
+                severity = severity,
                 ttl = 5,              // Allow 5 hops across the mesh
                 syncStatus = 0        // 0 = PENDING_UPLOAD
             )
 
             // Inserting it into the DB automatically queues it for the BLE Time-Slicer to advertise
             dao.insertPacket(mySos)
+        }
+    }
+
+    // NEW: Triggers the DAO update to drop the packet from the local broadcast loop
+    fun dismissBroadcast(messageId: Int) {
+        viewModelScope.launch {
+            dao.dismissPacket(messageId)
         }
     }
 }

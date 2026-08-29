@@ -7,12 +7,16 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
+import androidx.core.view.WindowCompat
 import com.example.myapplication.ui.screens.HomeScreen
-import com.example.myapplication.ui.theme.MyApplicationTheme // Ensure this matches your actual theme package
+import com.example.myapplication.ui.theme.MyApplicationTheme
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // NEW: Latch Design System Requirement - Draw behind system bars
+        WindowCompat.setDecorFitsSystemWindows(window, false)
 
         setContent {
             MyApplicationTheme {

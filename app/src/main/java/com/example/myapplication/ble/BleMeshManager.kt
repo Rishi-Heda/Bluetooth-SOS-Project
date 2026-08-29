@@ -124,18 +124,12 @@ class BleMeshManager(
         override fun onScanResult(callbackType: Int, result: ScanResult) {
             val manufacturerData = result.scanRecord?.getManufacturerSpecificData(MANUFACTURER_ID)
             if (manufacturerData != null) {
-                // We caught a packet! Try to deserialize it.
                 val packet = SosPacket.fromByteArray(manufacturerData)
 
                 if (packet != null) {
-                    // TTL is decremented HERE, on receipt — this represents one real
-                    // device-to-device hop. It must NOT be decremented on the sending/
-                    // advertising side, since a phone may advertise many times into
-                    // empty air before any peer is actually in range to catch it.
                     val newTtl = (packet.ttl - 1).coerceAtLeast(0)
 
                     if (newTtl <= 0 && packet.ttl <= 0) {
-                        // Already exhausted before we even received it — drop silently.
                         Log.d("Mesh", "RX: Dropped ID=${packet.messageId}, TTL exhausted.")
                         return
                     }
@@ -145,12 +139,12 @@ class BleMeshManager(
                             messageId = packet.messageId,
                             latitude = packet.latitude,
                             longitude = packet.longitude,
+                            emergencyType = packet.emergencyType, // NEW: Must map to Entity
                             severity = packet.severity,
                             ttl = newTtl.toByte(),
-                            syncStatus = 0 // Needs to be uploaded when we hit the gateway
+                            syncStatus = 0 
                         )
 
-                        // Deduplication Engine: Room drops this if the ID already exists
                         val rowId = dao.insertPacket(entity)
                         if (rowId != -1L) {
                             Log.d("Mesh", "RX: New SOS! ID=${packet.messageId} Saved to Queue. TTL now $newTtl")
