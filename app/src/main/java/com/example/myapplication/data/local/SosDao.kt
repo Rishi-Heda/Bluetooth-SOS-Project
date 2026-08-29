@@ -18,8 +18,11 @@ interface SosDao {
     @Query("SELECT * FROM sos_messages ORDER BY timestamp DESC")
     fun getAllMessages(): Flow<List<SosEntity>>
 
-    // For the BLE Advertiser: Fetch up to 3 messages that still have TTL remaining
-    @Query("SELECT * FROM sos_messages WHERE ttl > 0 AND syncStatus = 0 LIMIT 3")
+    // For the BLE Advertiser: Fetch ALL messages that still have TTL remaining and
+    // haven't been uploaded yet. No LIMIT here — the mesh loop round-robins through
+    // whatever comes back, so capping this at a small number would silently starve
+    // messages beyond the cap, especially when there's no internet to clear the queue.
+    @Query("SELECT * FROM sos_messages WHERE ttl > 0 AND syncStatus = 0 ORDER BY timestamp ASC")
     suspend fun getPacketsForRelay(): List<SosEntity>
 
     // For the Gateway Uploader: Fetch ALL pending messages when internet is restored
@@ -29,8 +32,4 @@ interface SosDao {
     // Mark messages as uploaded so we stop broadcasting them locally
     @Query("UPDATE sos_messages SET syncStatus = 1 WHERE messageId IN (:messageIds)")
     suspend fun markAsUploaded(messageIds: List<Int>)
-
-    // Decrement TTL before rebroadcasting (so messages eventually die)
-    @Query("UPDATE sos_messages SET ttl = ttl - 1 WHERE messageId = :id")
-    suspend fun decrementTtl(id: Int)
 }
