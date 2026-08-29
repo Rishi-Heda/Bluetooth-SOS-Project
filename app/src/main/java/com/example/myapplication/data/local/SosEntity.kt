@@ -2,7 +2,7 @@ package com.example.myapplication.data.local
 
 import androidx.room.Entity
 import androidx.room.PrimaryKey
-import com.example.disastermesh.data.model.SosPacket
+import com.example.myapplication.data.model.SosPacket
 
 @Entity(tableName = "sos_messages")
 data class SosEntity(
