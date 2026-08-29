@@ -29,8 +29,25 @@ class BleMeshManager(
     private var meshJob: Job? = null
     val isMeshRunning = MutableStateFlow(false)
 
+    // Rotates through the pending-relay queue so a single stuck/slow-to-upload
+    // message doesn't monopolize every advertise cycle and starve newer messages.
+    private var relayIndex = 0
+
+    // How long each message gets "on air" per advertise slot before we rotate
+    // to the next pending message. Shorter = more messages get a turn during a
+    // brief encounter, at the cost of slightly more BLE start/stop churn.
+    private val ADVERTISE_SLOT_MS = 2000L
+    private val EMPTY_QUEUE_BACKOFF_MS = 1000L
+
     /**
-     * Starts the Time-Slicer heartbeat loop.
+     * Starts the mesh: scanning runs continuously for the whole session,
+     * advertising is time-sliced across whatever messages are pending.
+     *
+     * Scanning is intentionally NOT stopped/restarted every cycle — Android
+     * silently throttles apps that call startScan()/stopScan() too many times
+     * in a short window, which would make detection *worse*, not better, if
+     * we cycled scanning on and off frequently. A phone can scan and advertise
+     * at the same time, so there's no need to pause scanning while advertising.
      */
     fun startMesh() {
         if (bluetoothAdapter == null || !bluetoothAdapter.isEnabled) {
@@ -41,25 +58,33 @@ class BleMeshManager(
         if (isMeshRunning.value) return
         isMeshRunning.value = true
 
-        // Launch the time-slicer on a background I/O thread
+        // Start scanning ONCE for the whole mesh session.
+        scanForPeers()
+
+        // The loop now only handles rotating the advertised message.
         meshJob = CoroutineScope(Dispatchers.IO).launch {
             while (isActive) {
-                // 1. SCAN PHASE (6 Seconds)
-                scanForPeers()
-                delay(6000)
-                stopScanning()
+                try {
+                    val packetsToRelay = dao.getPacketsForRelay()
+                    if (packetsToRelay.isNotEmpty()) {
+                        // Round-robin through ALL currently pending messages (no longer
+                        // capped at 3 — see SosDao.getPacketsForRelay), so every queued
+                        // SOS eventually gets airtime instead of only the first few.
+                        val packetEntity = packetsToRelay[relayIndex % packetsToRelay.size]
+                        relayIndex++
 
-                // 2. ADVERTISE PHASE (3 Seconds)
-                val packetsToRelay = dao.getPacketsForRelay()
-                if (packetsToRelay.isNotEmpty()) {
-                    // We pick the oldest unsent packet to advertise in this time slice
-                    val packetEntity = packetsToRelay.first()
-                    advertisePacket(packetEntity)
-                    delay(3000)
-                    stopAdvertising()
-                } else {
-                    // If local queue is empty, take a short breather to save battery
-                    delay(1000)
+                        advertisePacket(packetEntity)
+                        delay(ADVERTISE_SLOT_MS)
+                        stopAdvertising()
+                    } else {
+                        relayIndex = 0
+                        delay(EMPTY_QUEUE_BACKOFF_MS)
+                    }
+                } catch (e: Exception) {
+                    // A single bad iteration (DB hiccup, BLE API throwing unexpectedly,
+                    // etc.) should not silently kill the whole mesh loop forever.
+                    Log.e("Mesh", "Loop iteration failed, continuing anyway", e)
+                    delay(EMPTY_QUEUE_BACKOFF_MS)
                 }
             }
         }
@@ -77,7 +102,7 @@ class BleMeshManager(
     // =======================================================================
 
     private fun scanForPeers() {
-        Log.d("Mesh", "STATE: Scanning...")
+        Log.d("Mesh", "STATE: Scanning (continuous)...")
 
         // Filter strictly for our Manufacturer ID so the OS doesn't wake us up for random smartwatches
         val filter = ScanFilter.Builder()
@@ -85,7 +110,7 @@ class BleMeshManager(
             .build()
 
         val settings = ScanSettings.Builder()
-            .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY) // High power for short burst
+            .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
             .build()
 
         bleScanner?.startScan(listOf(filter), settings, scanCallback)
@@ -103,20 +128,32 @@ class BleMeshManager(
                 val packet = SosPacket.fromByteArray(manufacturerData)
 
                 if (packet != null) {
+                    // TTL is decremented HERE, on receipt — this represents one real
+                    // device-to-device hop. It must NOT be decremented on the sending/
+                    // advertising side, since a phone may advertise many times into
+                    // empty air before any peer is actually in range to catch it.
+                    val newTtl = (packet.ttl - 1).coerceAtLeast(0)
+
+                    if (newTtl <= 0 && packet.ttl <= 0) {
+                        // Already exhausted before we even received it — drop silently.
+                        Log.d("Mesh", "RX: Dropped ID=${packet.messageId}, TTL exhausted.")
+                        return
+                    }
+
                     CoroutineScope(Dispatchers.IO).launch {
                         val entity = SosEntity(
                             messageId = packet.messageId,
                             latitude = packet.latitude,
                             longitude = packet.longitude,
                             severity = packet.severity,
-                            ttl = packet.ttl,
+                            ttl = newTtl.toByte(),
                             syncStatus = 0 // Needs to be uploaded when we hit the gateway
                         )
 
                         // Deduplication Engine: Room drops this if the ID already exists
                         val rowId = dao.insertPacket(entity)
                         if (rowId != -1L) {
-                            Log.d("Mesh", "RX: New SOS! ID=${packet.messageId} Saved to Queue.")
+                            Log.d("Mesh", "RX: New SOS! ID=${packet.messageId} Saved to Queue. TTL now $newTtl")
                         }
                     }
                 }
@@ -135,10 +172,13 @@ class BleMeshManager(
     private var currentAdvertiseCallback: AdvertiseCallback? = null
 
     private suspend fun advertisePacket(entity: SosEntity) {
-        Log.d("Mesh", "STATE: Advertising ID=${entity.messageId}...")
+        Log.d("Mesh", "STATE: Advertising ID=${entity.messageId}, TTL=${entity.ttl}...")
 
-        // Decrement TTL in the database so it eventually dies out
-        dao.decrementTtl(entity.messageId)
+        // NOTE: TTL is intentionally NOT decremented here. Advertising is just an
+        // "offer" broadcast into the air — it says nothing about whether any peer
+        // actually received it. TTL only drops when a receiving device (see
+        // scanCallback.onScanResult above) actually catches the packet, since
+        // that's the only point representing a genuine hop.
 
         val packet = entity.toSosPacket()
 
