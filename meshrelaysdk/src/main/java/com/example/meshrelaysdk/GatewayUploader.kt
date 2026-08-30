@@ -1,4 +1,4 @@
-package com.example.myapplication.network
+package com.example.meshrelaysdk
 
 import android.content.Context
 import android.net.ConnectivityManager

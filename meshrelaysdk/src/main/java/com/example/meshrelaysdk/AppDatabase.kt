@@ -1,4 +1,4 @@
-package com.example.myapplication.data.local
+package com.example.meshrelaysdk
 
 import android.content.Context
 import androidx.room.Database

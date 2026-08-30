@@ -1,4 +1,4 @@
-package com.example.myapplication.ble
+package com.example.meshrelaysdk
 
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter

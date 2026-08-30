@@ -1,4 +1,4 @@
-package com.example.myapplication.data.local
+package com.example.meshrelaysdk
 
 import androidx.room.Entity
 import androidx.room.PrimaryKey
