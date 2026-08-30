@@ -12,9 +12,9 @@ import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
-import com.example.myapplication.ble.BleMeshManager
-import com.example.myapplication.data.local.AppDatabase
-import com.example.myapplication.network.GatewayUploader
+import com.example.meshrelaysdk.ble.BleMeshManager
+import com.example.meshrelaysdk.data.local.AppDatabase
+import com.example.meshrelaysdk.network.GatewayUploader
 
 class MeshForegroundService : Service() {
 
@@ -34,7 +34,10 @@ class MeshForegroundService : Service() {
 
         // Initialize the sub-modules, passing the Dao they both need
         bleMeshManager = BleMeshManager(this, database.sosDao())
-        gatewayUploader = GatewayUploader(this, database.sosDao())
+        
+        // FIX: Provide the backend URL to the SDK here
+        val myBackendUrl = "https://dashboard-bluetooth-sos.onrender.com/api/sos/"
+        gatewayUploader = GatewayUploader(this, database.sosDao(), myBackendUrl)
 
         createNotificationChannel()
     }
@@ -42,15 +45,13 @@ class MeshForegroundService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.d("MeshService", "Service Started")
 
-        // 1. Build the persistent notification
         val notification: Notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Disaster Mesh Active")
             .setContentText("Relaying SOS signals in the background...")
-            .setSmallIcon(android.R.drawable.ic_dialog_alert) // Replace with your own app icon later
+            .setSmallIcon(android.R.drawable.ic_dialog_alert) 
             .setOngoing(true)
             .build()
 
-        // 2. Start the Foreground Service safely specifying the Connected Device type (Required for Android 14+)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             ServiceCompat.startForeground(
                 this,
@@ -66,13 +67,9 @@ class MeshForegroundService : Service() {
             startForeground(NOTIFICATION_ID, notification)
         }
 
-        // 3. Kick off the Scan/Advertise Time-Slicer heartbeat
         bleMeshManager.startMesh()
-
-        // 4. Start listening for internet connections to flush the queue
         gatewayUploader.startListening()
 
-        // START_STICKY tells the OS: "If you must kill this service for memory, restart it ASAP"
         return START_STICKY
     }
 
@@ -80,13 +77,11 @@ class MeshForegroundService : Service() {
         super.onDestroy()
         Log.d("MeshService", "Service Destroyed")
 
-        // Gracefully shut down hardware listeners to prevent battery drain and memory leaks
         bleMeshManager.stopMesh()
         gatewayUploader.stopListening()
     }
 
     override fun onBind(intent: Intent?): IBinder? {
-        // We return null because this is a "Started" service, not a "Bound" service.
         return null
     }
 
@@ -95,7 +90,7 @@ class MeshForegroundService : Service() {
             val serviceChannel = NotificationChannel(
                 CHANNEL_ID,
                 "Mesh Network Service Channel",
-                NotificationManager.IMPORTANCE_LOW // LOW importance = no sound/vibration, just the icon
+                NotificationManager.IMPORTANCE_LOW 
             )
             val manager = getSystemService(NotificationManager::class.java)
             manager?.createNotificationChannel(serviceChannel)
