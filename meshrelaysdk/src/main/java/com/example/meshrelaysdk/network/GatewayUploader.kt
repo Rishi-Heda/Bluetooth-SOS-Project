@@ -1,4 +1,4 @@
-package com.example.meshrelaysdk
+package com.example.meshrelaysdk.network
 
 import android.content.Context
 import android.net.ConnectivityManager
@@ -6,8 +6,7 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.util.Log
-import com.example.myapplication.BuildConfig
-import com.example.myapplication.data.local.SosDao
+import com.example.meshrelaysdk.data.local.SosDao
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -19,7 +18,8 @@ import retrofit2.converter.gson.GsonConverterFactory
 
 class GatewayUploader(
     context: Context,
-    private val dao: SosDao
+    private val dao: SosDao,
+    private val baseUrl: String // SDK consumers must provide their own server URL!
 ) {
     private val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
     private val uploadScope = CoroutineScope(Dispatchers.IO + Job())
@@ -28,8 +28,9 @@ class GatewayUploader(
     
     private var isNetworkAvailable = false 
 
+    // Now uses the dynamic baseUrl passed from the host app
     private val apiService = Retrofit.Builder()
-        .baseUrl(BuildConfig.BASE_URL)
+        .baseUrl(baseUrl)
         .addConverterFactory(GsonConverterFactory.create())
         .build()
         .create(MeshApiService::class.java)

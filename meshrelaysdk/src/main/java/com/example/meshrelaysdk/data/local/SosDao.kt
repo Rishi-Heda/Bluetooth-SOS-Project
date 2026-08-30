@@ -1,4 +1,4 @@
-package com.example.meshrelaysdk
+package com.example.meshrelaysdk.data.local
 
 import androidx.room.Dao
 import androidx.room.Insert

@@ -4,9 +4,10 @@ import android.app.Application
 import android.content.Intent
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.myapplication.data.local.AppDatabase
-import com.example.myapplication.data.local.SosEntity
-import com.example.myapplication.data.model.SosPacket
+// FIX: Point to the new SDK module packages
+import com.example.meshrelaysdk.data.local.AppDatabase
+import com.example.meshrelaysdk.data.local.SosEntity
+import com.example.meshrelaysdk.data.model.SosPacket
 import com.example.myapplication.service.MeshForegroundService
 import com.example.myapplication.utils.LocationHelper
 import kotlinx.coroutines.flow.SharingStarted
@@ -19,7 +20,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val dao = AppDatabase.getDatabase(application).sosDao()
     private val locationHelper = LocationHelper(application)
 
-    // Automatically feeds the latest DB rows to the Jetpack Compose UI
     val messages: StateFlow<List<SosEntity>> = dao.getAllMessages()
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
@@ -33,10 +33,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         getApplication<Application>().stopService(intent)
     }
 
-    // UPDATED: Now accepts dynamic type and severity from the UI dropdowns
     fun broadcastMySos(emergencyType: Byte, severity: Byte) {
         viewModelScope.launch {
-            // Fetch real GPS, fallback to 0.0 if the location request fails
             val coordinates = locationHelper.getCurrentLocation()
             val lat = coordinates?.first ?: 0.0f
             val lon = coordinates?.second ?: 0.0f
@@ -47,16 +45,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 longitude = lon,
                 emergencyType = emergencyType,
                 severity = severity,
-                ttl = 5,              // Allow 5 hops across the mesh
-                syncStatus = 0        // 0 = PENDING_UPLOAD
+                ttl = 5,              
+                syncStatus = 0        
             )
 
-            // Inserting it into the DB automatically queues it for the BLE Time-Slicer to advertise
             dao.insertPacket(mySos)
         }
     }
 
-    // NEW: Triggers the DAO update to drop the packet from the local broadcast loop
     fun dismissBroadcast(messageId: Int) {
         viewModelScope.launch {
             dao.dismissPacket(messageId)

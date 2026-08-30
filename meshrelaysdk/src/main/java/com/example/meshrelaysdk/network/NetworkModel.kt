@@ -1,4 +1,4 @@
-package com.example.meshrelaysdk
+package com.example.meshrelaysdk.network
 
 import com.google.gson.annotations.SerializedName
 

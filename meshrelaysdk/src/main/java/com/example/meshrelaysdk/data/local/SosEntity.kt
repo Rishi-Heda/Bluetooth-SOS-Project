@@ -1,8 +1,8 @@
-package com.example.meshrelaysdk
+package com.example.meshrelaysdk.data.local
 
 import androidx.room.Entity
 import androidx.room.PrimaryKey
-import com.example.myapplication.data.model.SosPacket
+import com.example.meshrelaysdk.data.model.SosPacket
 
 @Entity(tableName = "sos_messages")
 data class SosEntity(

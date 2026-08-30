@@ -1,4 +1,4 @@
-package com.example.meshrelaysdk
+package com.example.meshrelaysdk.data.model
 
 data class SosPacket(
     val messageId: Int,      // 4 bytes: Truncated hash for deduplication

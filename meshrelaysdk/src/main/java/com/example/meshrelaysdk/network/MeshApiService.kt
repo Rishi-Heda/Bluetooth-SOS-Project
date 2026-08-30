@@ -1,4 +1,4 @@
-package com.example.meshrelaysdk
+package com.example.meshrelaysdk.network
 
 import retrofit2.Response
 import retrofit2.http.Body
