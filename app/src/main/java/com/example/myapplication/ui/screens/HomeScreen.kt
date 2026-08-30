@@ -1,7 +1,13 @@
 package com.example.myapplication.ui.screens
 
+import android.content.Context
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -11,19 +17,19 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -34,17 +40,21 @@ import com.example.meshrelaysdk.network.SeverityLevel
 import com.example.myapplication.ui.MainViewModel
 import com.example.myapplication.utils.PermissionHelper
 
-// --- New Light & Airy Color Palette ---
-private val AppBackground = Color(0xFFF4F7F9)
-private val SurfaceWhite = Color(0xFFFFFFFF)
-private val PrimaryBlue = Color(0xFF4A90E2)
-private val PrimaryBlueSoft = Color(0xFFEBF3FC)
-private val TextDark = Color(0xFF2C3E50)
-private val TextSlate = Color(0xFF7F8C8D)
-private val DangerRed = Color(0xFFFF4757)
-private val DangerRedSoft = Color(0xFFFFEBEE)
-private val SuccessGreen = Color(0xFF2ED573)
-private val WarningOrange = Color(0xFFFFA502)
+// --- Dark Bento Theme Palette ---
+private val BgBlack = Color(0xFF000000)
+private val BoxWhite = Color(0xFFFFFFFF)
+private val BoxOrange = Color(0xFFF39C12) // Orangish-Yellow (Active Relay)
+private val BoxDarkGray = Color(0xFF1C1C1E)
+private val TextMainDark = Color(0xFF000000)
+private val TextSubDark = Color(0xFF8E8E93)
+private val TextMainLight = Color(0xFFFFFFFF)
+private val TextSubLight = Color(0xFFAAAAAA)
+private val AccentRed = Color(0xFFFF3B30) // Red (Dismissed/Error)
+private val AccentGreen = Color(0xFF34C759) // Green (Uploaded/Online)
+private val AccentBlue = Color(0xFF007AFF)
+
+private val WidgetShape = RoundedCornerShape(32.dp)
+private val InnerPillShape = RoundedCornerShape(16.dp)
 
 @Composable
 fun HomeScreen(viewModel: MainViewModel = viewModel()) {
@@ -54,6 +64,9 @@ fun HomeScreen(viewModel: MainViewModel = viewModel()) {
     var permissionsGranted by remember { mutableStateOf(false) }
     var isMeshActive by remember { mutableStateOf(false) }
 
+    // Real-time network state listener
+    val isOnline by viewModel.isOnline.collectAsState()
+    
     var selectedType by remember { mutableStateOf(EmergencyType.SOS_SIGNAL) }
     var selectedSeverity by remember { mutableStateOf(SeverityLevel.CRITICAL) }
 
@@ -66,221 +79,106 @@ fun HomeScreen(viewModel: MainViewModel = viewModel()) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(AppBackground)
-            .padding(horizontal = 20.dp)
+            .background(BgBlack)
+            .padding(top = 64.dp, start = 16.dp, end = 16.dp, bottom = 32.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Spacer(modifier = Modifier.height(32.dp))
         
-        // Header
-        Text(
-            text = "Disaster Mesh",
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.ExtraBold,
-            color = TextDark
+        // 1. Top Header Pill
+        HeaderPill(
+            permissionsGranted = permissionsGranted,
+            isOnline = isOnline,
+            onGrantPermissions = { permissionLauncher.launch(PermissionHelper.REQUIRED_PERMISSIONS.toTypedArray()) }
         )
-        Text(
-            text = "Peer-to-peer emergency relay",
-            style = MaterialTheme.typography.bodyMedium,
-            color = TextSlate
-        )
-        
-        Spacer(modifier = Modifier.height(24.dp))
 
-        if (!permissionsGranted) {
-            SetupSection(
-                onGrantPermissions = {
-                    permissionLauncher.launch(PermissionHelper.REQUIRED_PERMISSIONS.toTypedArray())
-                },
-                onDisableBattery = { PermissionHelper.requestBatteryExemption(context) }
-            )
-        } else {
-            // New Toggle Switch for Mesh Control
-            MeshToggleCard(
-                isActive = isMeshActive,
-                onToggle = { active ->
-                    isMeshActive = active
-                    if (active) viewModel.startMeshService() else viewModel.stopMeshService()
-                }
-            )
-
-            Spacer(modifier = Modifier.height(20.dp))
-            
-            // Redesigned Dropdowns
-            SelectionRow(
-                selectedType = selectedType,
-                selectedSeverity = selectedSeverity,
-                onTypeChange = { selectedType = it },
-                onSeverityChange = { selectedSeverity = it }
-            )
-
-            Spacer(modifier = Modifier.height(28.dp))
-            
-            SosButton(onClick = { viewModel.broadcastMySos(selectedType.code, selectedSeverity.code) })
-
-            Spacer(modifier = Modifier.height(32.dp))
-            
-            Text(
-                text = "Activity Log",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = TextDark
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-
-            if (messages.isEmpty()) {
-                Box(
-                    modifier = Modifier.fillMaxWidth().padding(top = 20.dp),
-                    contentAlignment = Alignment.Center
+        if (permissionsGranted) {
+            // 2. Bento Grid Layout (2x2 Squares)
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                
+                // Top Row: Selections (Squares)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    Text("No local mesh activity.", color = TextSlate, textAlign = TextAlign.Center)
+                    InteractiveSelectionBento(
+                        modifier = Modifier.weight(1f).aspectRatio(1f),
+                        title = "Type",
+                        items = EmergencyType.entries,
+                        selectedItem = selectedType,
+                        onItemSelected = { selectedType = it },
+                        itemLabel = { it.stringValue }
+                    )
+                    
+                    InteractiveSelectionBento(
+                        modifier = Modifier.weight(1f).aspectRatio(1f),
+                        title = "Severity",
+                        items = SeverityLevel.entries,
+                        selectedItem = selectedSeverity,
+                        onItemSelected = { selectedSeverity = it },
+                        itemLabel = { it.stringValue }
+                    )
                 }
-            } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(8.dp) // Tighter spacing
+
+                // Bottom Row: Actions (Squares)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    items(messages) { msg ->
-                        MessageCard(
-                            msg = msg,
-                            onDismiss = { viewModel.dismissBroadcast(msg.messageId) }
-                        )
-                    }
-                    item { Spacer(modifier = Modifier.height(16.dp)) }
+                    MeshControlBento(
+                        modifier = Modifier.weight(1f).aspectRatio(1f),
+                        isActive = isMeshActive,
+                        onToggle = { active ->
+                            isMeshActive = active
+                            if (active) viewModel.startMeshService() else viewModel.stopMeshService()
+                        }
+                    )
+
+                    SosOrangeBento(
+                        modifier = Modifier.weight(1f).aspectRatio(1f),
+                        onClick = { viewModel.broadcastMySos(selectedType.code, selectedSeverity.code) }
+                    )
                 }
             }
+
+            // 3. Bottom Broadcast Window
+            BottomActivityWindow(
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                messages = messages,
+                onDismiss = { id -> viewModel.dismissBroadcast(id) }
+            )
         }
     }
 }
 
 @Composable
-private fun SetupSection(onGrantPermissions: () -> Unit, onDisableBattery: () -> Unit) {
+private fun HeaderPill(permissionsGranted: Boolean, isOnline: Boolean, onGrantPermissions: () -> Unit) {
     Card(
-        colors = CardDefaults.cardColors(containerColor = SurfaceWhite),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-        shape = RoundedCornerShape(16.dp)
-    ) {
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Button(
-                onClick = onGrantPermissions,
-                modifier = Modifier.fillMaxWidth().height(50.dp),
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue)
-            ) {
-                Text("1. Grant Permissions")
-            }
-            OutlinedButton(
-                onClick = onDisableBattery,
-                modifier = Modifier.fillMaxWidth().height(50.dp),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Text("2. Disable Battery Optimization", color = TextDark)
-            }
-        }
-    }
-}
-
-@Composable
-private fun MeshToggleCard(isActive: Boolean, onToggle: (Boolean) -> Unit) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = SurfaceWhite),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        modifier = Modifier.fillMaxWidth().height(80.dp),
+        shape = WidgetShape,
+        colors = CardDefaults.cardColors(containerColor = BoxDarkGray)
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp).fillMaxWidth(),
+            modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Column {
-                Text("Mesh Network", fontWeight = FontWeight.Bold, color = TextDark, fontSize = 16.sp)
-                Text(
-                    text = if (isActive) "Actively listening & relaying" else "Offline",
-                    color = if (isActive) SuccessGreen else TextSlate,
-                    fontSize = 13.sp
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                // Internet Status Dot
+                Box(
+                    modifier = Modifier.size(12.dp).clip(CircleShape).background(if (isOnline) AccentGreen else AccentRed)
                 )
+                Spacer(modifier = Modifier.width(16.dp))
+                Column {
+                    Text("NETWORK STATUS", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = TextSubLight, letterSpacing = 1.sp)
+                    Text(if (isOnline) "Online" else "Offline", fontWeight = FontWeight.Black, fontSize = 20.sp, color = TextMainLight)
+                }
             }
-            Switch(
-                checked = isActive,
-                onCheckedChange = onToggle,
-                colors = SwitchDefaults.colors(
-                    checkedThumbColor = SurfaceWhite,
-                    checkedTrackColor = PrimaryBlue,
-                    uncheckedThumbColor = TextSlate,
-                    uncheckedTrackColor = AppBackground
-                )
-            )
-        }
-    }
-}
-
-@Composable
-private fun SelectionRow(
-    selectedType: EmergencyType,
-    selectedSeverity: SeverityLevel,
-    onTypeChange: (EmergencyType) -> Unit,
-    onSeverityChange: (SeverityLevel) -> Unit
-) {
-    var typeExpanded by remember { mutableStateOf(false) }
-    var severityExpanded by remember { mutableStateOf(false) }
-
-    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-        // Type Dropdown
-        Box(modifier = Modifier.weight(1f)) {
-            Card(
-                modifier = Modifier.fillMaxWidth().clickable { typeExpanded = true },
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = SurfaceWhite),
-                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-            ) {
-                Row(
-                    modifier = Modifier.padding(12.dp).fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+            if (!permissionsGranted) {
+                Button(
+                    onClick = onGrantPermissions,
+                    colors = ButtonDefaults.buttonColors(containerColor = AccentRed)
                 ) {
-                    Column {
-                        Text("Category", fontSize = 11.sp, color = TextSlate)
-                        Text(selectedType.stringValue, fontWeight = FontWeight.SemiBold, color = PrimaryBlue, fontSize = 14.sp)
-                    }
-                    Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = TextSlate)
-                }
-            }
-            DropdownMenu(expanded = typeExpanded, onDismissRequest = { typeExpanded = false }, modifier = Modifier.background(SurfaceWhite)) {
-                EmergencyType.entries.forEach { type ->
-                    DropdownMenuItem(
-                        text = { Text(type.stringValue, color = TextDark) },
-                        onClick = { onTypeChange(type); typeExpanded = false }
-                    )
-                }
-            }
-        }
-
-        // Severity Dropdown
-        Box(modifier = Modifier.weight(1f)) {
-            Card(
-                modifier = Modifier.fillMaxWidth().clickable { severityExpanded = true },
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = SurfaceWhite),
-                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-            ) {
-                Row(
-                    modifier = Modifier.padding(12.dp).fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column {
-                        Text("Severity", fontSize = 11.sp, color = TextSlate)
-                        Text(selectedSeverity.stringValue, fontWeight = FontWeight.SemiBold, color = DangerRed, fontSize = 14.sp)
-                    }
-                    Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = TextSlate)
-                }
-            }
-            DropdownMenu(expanded = severityExpanded, onDismissRequest = { severityExpanded = false }, modifier = Modifier.background(SurfaceWhite)) {
-                SeverityLevel.entries.forEach { sev ->
-                    DropdownMenuItem(
-                        text = { Text(sev.stringValue, color = TextDark) },
-                        onClick = { onSeverityChange(sev); severityExpanded = false }
-                    )
+                    Text("Fix Perms")
                 }
             }
         }
@@ -288,113 +186,261 @@ private fun SelectionRow(
 }
 
 @Composable
-private fun SosButton(onClick: () -> Unit) {
+private fun SosOrangeBento(modifier: Modifier = Modifier, onClick: () -> Unit) {
     val infiniteTransition = rememberInfiniteTransition(label = "sos-pulse")
     val scale by infiniteTransition.animateFloat(
         initialValue = 1f,
         targetValue = 1.08f,
         animationSpec = infiniteRepeatable(
-            animation = tween(1000, easing = FastOutSlowInEasing),
+            animation = tween(800, easing = LinearOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ),
         label = "sos-scale"
     )
 
-    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-        // Outer pulsing ring
-        Box(
-            modifier = Modifier
-                .size(160.dp)
-                .scale(scale)
-                .clip(CircleShape)
-                .background(DangerRedSoft)
-        )
-        
-        // Inner clickable button
-        Button(
-            onClick = onClick,
-            modifier = Modifier.size(130.dp),
-            shape = CircleShape,
-            colors = ButtonDefaults.buttonColors(containerColor = DangerRed),
-            elevation = ButtonDefaults.buttonElevation(defaultElevation = 8.dp, pressedElevation = 2.dp)
-        ) {
-            Text("SOS", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = SurfaceWhite)
+    Card(
+        modifier = modifier,
+        shape = WidgetShape,
+        colors = CardDefaults.cardColors(containerColor = BoxOrange)
+    ) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Box(
+                modifier = Modifier
+                    .size(120.dp)
+                    .scale(scale)
+                    .clip(CircleShape)
+                    .background(AccentRed.copy(alpha = 0.3f))
+            )
+            Box(
+                modifier = Modifier
+                    .size(90.dp)
+                    .clip(CircleShape)
+                    .background(AccentRed)
+                    .clickable { onClick() },
+                contentAlignment = Alignment.Center
+            ) {
+                Text("SOS", color = BoxWhite, fontWeight = FontWeight.Black, fontSize = 24.sp)
+            }
         }
     }
 }
 
 @Composable
-private fun MessageCard(msg: SosEntity, onDismiss: () -> Unit) {
-    // Determine dynamic colors for the status pill
-    val (statusText, statusBg, statusColor) = when {
-        msg.isDismissed -> Triple("Dismissed", Color(0xFFEEEEEE), TextSlate)
-        msg.syncStatus == 1 -> Triple("Synced", Color(0xFFE8F5E9), SuccessGreen)
-        else -> Triple("Relaying", Color(0xFFFFF3E0), WarningOrange)
-    }
-
+private fun MeshControlBento(modifier: Modifier, isActive: Boolean, onToggle: (Boolean) -> Unit) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = SurfaceWhite),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+        modifier = modifier,
+        shape = WidgetShape,
+        colors = CardDefaults.cardColors(containerColor = BoxWhite)
     ) {
-        // Slimmer padding (10dp instead of 16dp)
-        Column(modifier = Modifier.padding(10.dp)) {
-            
-            // Top Row: Badges & ID
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    // Slim Type Badge
-                    Box(modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(PrimaryBlueSoft).padding(horizontal = 6.dp, vertical = 2.dp)) {
-                        Text(EmergencyType.fromCode(msg.emergencyType).stringValue, color = PrimaryBlue, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                    }
-                    // Slim Severity Badge
-                    Box(modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(DangerRedSoft).padding(horizontal = 6.dp, vertical = 2.dp)) {
-                        Text(SeverityLevel.fromCode(msg.severity).stringValue, color = DangerRed, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                    }
-                }
-                
-                // Dismiss Button (inline to save vertical space)
-                if (!msg.isDismissed && msg.syncStatus == 0) {
-                    Box(modifier = Modifier.clickable { onDismiss() }.padding(4.dp)) {
-                        Icon(Icons.Default.Close, contentDescription = "Dismiss", tint = TextSlate, modifier = Modifier.size(16.dp))
-                    }
-                }
-            }
-            
-            Spacer(modifier = Modifier.height(6.dp))
-
-            // Middle Row: TTL & ID
-            Text(
-                "ID: ${msg.messageId}  •  TTL: ${msg.ttl}",
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = TextDark
+        Column(
+            modifier = Modifier.fillMaxSize().padding(20.dp),
+            verticalArrangement = Arrangement.SpaceBetween,
+            horizontalAlignment = Alignment.Start
+        ) {
+            Switch(
+                checked = isActive,
+                onCheckedChange = onToggle,
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = BoxWhite,
+                    checkedTrackColor = AccentBlue,
+                    uncheckedThumbColor = BoxWhite,
+                    uncheckedTrackColor = TextSubLight
+                )
             )
             
-            Spacer(modifier = Modifier.height(2.dp))
+            Column {
+                Text("Mesh", fontWeight = FontWeight.Bold, fontSize = 22.sp, color = TextMainDark)
+                Text(if (isActive) "Active" else "Offline", fontSize = 16.sp, color = TextSubDark)
+            }
+        }
+    }
+}
 
-            // Bottom Row: GPS & Status Pill
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    "GPS: ${msg.latitude}, ${msg.longitude}",
-                    fontSize = 11.sp,
-                    color = TextSlate
-                )
-                
-                // Slim Status Pill
-                Box(modifier = Modifier.clip(CircleShape).background(statusBg).padding(horizontal = 8.dp, vertical = 2.dp)) {
-                    Text(statusText, color = statusColor, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+@OptIn(ExperimentalAnimationApi::class)
+@Composable
+private fun <T> InteractiveSelectionBento(
+    modifier: Modifier,
+    title: String,
+    items: List<T>,
+    selectedItem: T,
+    onItemSelected: (T) -> Unit,
+    itemLabel: (T) -> String
+) {
+    var isSelecting by remember { mutableStateOf(true) }
+
+    Card(
+        modifier = modifier,
+        shape = WidgetShape,
+        colors = CardDefaults.cardColors(containerColor = BoxWhite)
+    ) {
+        AnimatedContent(
+            targetState = isSelecting,
+            transitionSpec = {
+                fadeIn(animationSpec = tween(300)) togetherWith fadeOut(animationSpec = tween(300))
+            },
+            label = "selection_transition"
+        ) { selecting ->
+            if (selecting) {
+                Column(modifier = Modifier.fillMaxSize().padding(12.dp)) {
+                    Text(title, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = TextSubDark, modifier = Modifier.padding(bottom = 8.dp, start = 4.dp))
+                    LazyColumn(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items(items) { item ->
+                            val isSelected = item == selectedItem
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(InnerPillShape)
+                                    .background(if (isSelected) BoxDarkGray else BgBlack.copy(alpha = 0.05f))
+                                    .clickable { 
+                                        onItemSelected(item)
+                                        isSelecting = false 
+                                    }
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = itemLabel(item),
+                                    color = if (isSelected) BoxWhite else TextMainDark,
+                                    fontSize = 11.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                if (isSelected) {
+                                    Icon(Icons.Default.Check, contentDescription = null, tint = BoxWhite, modifier = Modifier.size(14.dp))
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                Column(
+                    modifier = Modifier.fillMaxSize().padding(20.dp).clickable { isSelecting = true },
+                    verticalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        Box(modifier = Modifier.size(28.dp).background(BgBlack.copy(alpha = 0.05f), CircleShape), contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.KeyboardArrowLeft, contentDescription = "Change", tint = TextSubDark, modifier = Modifier.size(18.dp))
+                        }
+                    }
+                    Column {
+                        Text(title, fontSize = 14.sp, color = TextSubDark)
+                        Text(
+                            text = itemLabel(selectedItem),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 18.sp,
+                            color = TextMainDark,
+                            lineHeight = 20.sp
+                        )
+                    }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun BottomActivityWindow(modifier: Modifier = Modifier, messages: List<SosEntity>, onDismiss: (Int) -> Unit) {
+    Card(
+        modifier = modifier,
+        shape = WidgetShape,
+        colors = CardDefaults.cardColors(containerColor = BoxDarkGray)
+    ) {
+        Column(modifier = Modifier.fillMaxSize().padding(vertical = 20.dp)) {
+            Text(
+                text = "Recent Broadcasts",
+                fontWeight = FontWeight.Bold,
+                color = TextMainLight,
+                fontSize = 18.sp,
+                modifier = Modifier.padding(horizontal = 20.dp).padding(bottom = 12.dp)
+            )
+            
+            if (messages.isEmpty()) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("No local mesh traffic.", color = TextSubLight, fontSize = 14.sp)
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    items(messages) { msg ->
+                        MessagePillRow(msg = msg, onDismiss = { onDismiss(msg.messageId) })
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MessagePillRow(msg: SosEntity, onDismiss: () -> Unit) {
+    // Determine right-edge bar color
+    val statusColor = when {
+        msg.syncStatus == 1 -> AccentGreen // Uploaded
+        msg.isDismissed -> AccentRed       // Dismissed
+        else -> BoxOrange                  // Active Relay
+    }
+    
+    // Convert TTL (max 5) into a Hop counter
+    val hops = 5 - msg.ttl
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(IntrinsicSize.Min) 
+            .clip(InnerPillShape)
+            .background(BgBlack.copy(alpha = 0.4f)),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Main Message Content
+        Row(
+            modifier = Modifier.weight(1f).padding(start = 16.dp, top = 12.dp, bottom = 12.dp, end = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    "${EmergencyType.fromCode(msg.emergencyType).stringValue} • ${SeverityLevel.fromCode(msg.severity).stringValue}",
+                    color = TextMainLight,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    "Hops: $hops • ID: ${msg.messageId}", 
+                    color = TextSubLight, 
+                    fontSize = 11.sp
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                // GPS Coordinates included
+                Text(
+                    "GPS: ${msg.latitude}, ${msg.longitude}", 
+                    color = TextSubLight, 
+                    fontSize = 11.sp
+                )
+            }
+            
+            // Dismiss Button
+            if (!msg.isDismissed && msg.syncStatus == 0) {
+                IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
+                    Icon(Icons.Default.Close, contentDescription = "Dismiss", tint = TextSubLight, modifier = Modifier.size(18.dp))
+                }
+            }
+        }
+        
+        // Right Edge Status Bar
+        Box(
+            modifier = Modifier
+                .width(6.dp)
+                .fillMaxHeight()
+                .background(statusColor)
+        )
     }
 }
