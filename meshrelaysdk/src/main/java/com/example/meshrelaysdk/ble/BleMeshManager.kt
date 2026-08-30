@@ -1,4 +1,4 @@
-package com.example.myapplication.ble
+package com.example.meshrelaysdk.ble
 
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
@@ -6,9 +6,9 @@ import android.bluetooth.BluetoothManager
 import android.bluetooth.le.*
 import android.content.Context
 import android.util.Log
-import com.example.myapplication.data.local.SosDao
-import com.example.myapplication.data.local.SosEntity
-import com.example.myapplication.data.model.SosPacket
+import com.example.meshrelaysdk.data.local.SosDao
+import com.example.meshrelaysdk.data.local.SosEntity
+import com.example.meshrelaysdk.data.model.SosPacket
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 

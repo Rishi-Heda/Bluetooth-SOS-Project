@@ -9,9 +9,10 @@ import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.myapplication.data.local.AppDatabase
-import com.example.myapplication.data.local.SosEntity
-import com.example.myapplication.data.model.SosPacket
+// FIX: Point to the new SDK module packages
+import com.example.meshrelaysdk.data.local.AppDatabase
+import com.example.meshrelaysdk.data.local.SosEntity
+import com.example.meshrelaysdk.data.model.SosPacket
 import com.example.myapplication.service.MeshForegroundService
 import com.example.myapplication.utils.LocationHelper
 import kotlinx.coroutines.flow.MutableStateFlow

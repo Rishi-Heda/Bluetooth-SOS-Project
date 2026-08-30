@@ -33,11 +33,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.myapplication.data.local.SosEntity
+// FIX: Update these 3 imports to point to the SDK
+import com.example.meshrelaysdk.data.local.SosEntity
+import com.example.meshrelaysdk.network.EmergencyType
+import com.example.meshrelaysdk.network.SeverityLevel
 import com.example.myapplication.ui.MainViewModel
 import com.example.myapplication.utils.PermissionHelper
-import com.example.myapplication.network.EmergencyType
-import com.example.myapplication.network.SeverityLevel
 
 // --- Dark Bento Theme Palette ---
 private val BgBlack = Color(0xFF000000)
